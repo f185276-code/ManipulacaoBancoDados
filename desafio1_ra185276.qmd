@@ -1,0 +1,36 @@
+---
+title: "Desafio1"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+
+read.csv() do pacote base
+```{r}
+tempo_base_r <- system.time({
+  df_base_r <- read.csv("~/archive/flights.csv")
+})
+tempo_base_r
+```
+
+read_csv() do pacote readr
+```{r}
+library(readr)
+tempo_readr <- system.time({
+  df_readr <- read_csv("~/archive/flights.csv", show_col_types = FALSE)
+})
+print(tempo_readr)
+```
+
+read_csv() do pandas
+```{python}
+#library(reticulate)
+#py_install("pandas")
+import time
+import pandas as pd
+inicio = time.time()
+df_pandas = pd.read_csv("~/archive/flights.csv")
+fim = time.time()
+tempo_pandas = fim - inicio
+```
+

@@ -1,0 +1,128 @@
+---
+title: "Desafio2"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+getStats <- function(chunk, pos) {
+  #companhias de interesse.
+  cias_interesse <- c("AA", "DL", "UA", "US")
+  #colunas para os cálculos.
+  cols_interesse <- c("YEAR", "MONTH", "DAY", "AIRLINE", "ARRIVAL_DELAY")
+  chunk %>%
+    #apenas as colunas de interesse
+    select(all_of(cols_interesse)) %>%
+    #filtra apenas as linhas das companhias aéreas desejadas
+    filter(AIRLINE %in% cias_interesse) %>%
+    #remove qualquer linha sem valores(NA)
+    drop_na() %>%
+    mutate(data_voo = make_date(YEAR, MONTH, DAY)) %>%
+    group_by(AIRLINE, data_voo) %>%
+    summarise(
+      total_voos = n(),
+      voos_atrasados = sum(ARRIVAL_DELAY > 10),
+      #remove o agrupamento após o summarise.
+      .groups = "drop"
+    )
+}
+
+```
+
+
+```{r}
+tipos_colunas <- cols_only(
+  YEAR = "i",
+  MONTH = "i",
+  DAY = "i",
+  AIRLINE = "c",
+  ARRIVAL_DELAY = "d"
+)
+```
+
+```{r}
+dados_agregados <- read_csv_chunked(
+  "~/archive/flights.csv",
+  #callback define a função
+  callback = DataFrameCallback$new(getStats),
+  #número de linhas
+  chunk_size = 100000,
+  col_types = tipos_colunas
+)
+```
+
+```{r}
+computeStats <- function(dados) {
+  dados %>%
+    #reagrupa os dados por dia
+    group_by(AIRLINE, data_voo) %>%
+    summarise(
+      total_voos = sum(total_voos),
+      voos_atrasados = sum(voos_atrasados),
+      .groups = "drop"
+    ) %>%
+    mutate(Perc = voos_atrasados / total_voos) %>%
+    rename(cia = AIRLINE, Data = data_voo) %>%
+    select(cia, Data, Perc)
+}
+stats_finais <- computeStats(dados_agregados)
+```
+
+```{r}
+baseCalendario <- function(stats, companhia) {
+    dados_cia <- filter(stats, cia == companhia) %>%
+    mutate(
+      mes = month(Data, label = TRUE),
+      dia_semana = wday(Data, label = TRUE, week_start = 1),
+      # Calcula a semana do mês para cada data. Essencial para o eixo Y do calendário.
+      semana_do_mes = 1 + week(Data) - week(floor_date(Data, "month"))
+    )
+  ggplot(dados_cia, aes(x = dia_semana, y = semana_do_mes, fill = Perc)) +
+    geom_tile(colour = "white") +
+    facet_wrap(~mes, scales = "free", ncol = 4) +
+    scale_fill_gradient(
+      low = "#4575b4", high = "#d73027",
+      name = "Atraso (%)", labels = scales::percent
+    ) +
+    scale_y_reverse() +
+    theme_minimal() +
+    labs(x = "", y = "")
+}
+```
+
+```{r}
+# Gera e armazena o gráfico para a (AA).
+cAA <- baseCalendario(stats_finais, "AA") +
+  # Adiciona um título ao gráfico.
+  labs(title = "Percentual de Voos Atrasados em 2015 - American Airlines (AA)")
+
+# Gera e armazena o gráfico para a (DL).
+cDL <- baseCalendario(stats_finais, "DL") +
+  # Adiciona um título ao gráfico.
+  labs(title = "Percentual de Voos Atrasados em 2015 - Delta Air Lines (DL)")
+
+# Gera e armazena o gráfico para a (UA).
+cUA <- baseCalendario(stats_finais, "UA") +
+  # Adiciona um título ao gráfico.
+  labs(title = "Percentual de Voos Atrasados em 2015 - United Airlines (UA)")
+
+# Gera e armazena o gráfico para a (US).
+cUS <- baseCalendario(stats_finais, "US") +
+  # Adiciona um título ao gráfico.
+  labs(title = "Percentual de Voos Atrasados em 2015 - US Airways (US)")
+```
+
+```{r}
+#gráficos
+print(cAA)
+print(cDL)
+print(cUA)
+print(cUS)
+```
+

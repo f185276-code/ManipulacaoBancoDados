@@ -1,0 +1,50 @@
+---
+title: "Aula11/09"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+```{r}
+library(RSQLite)
+db = dbConnect(SQLite(), '~/disco.db')
+db
+```
+
+```{r}
+dbListTables(db)
+```
+```{r}
+dbListFields(db, 'albums')
+dbListFields(db, 'tracks')
+```
+```{r}
+album_db = dbGetQuery(db, 'SELECT * FROM albums')
+head(album_db)
+```
+```{r}
+dim(album_db)
+```
+Selecione as colunas trackid, name, composer e unitprice. Ordene o objeto resultante por unitprice.
+```{r}
+sql = 'SELECT trackid, name, composer, unitprice FROM tracks ORDER BY unitprice'
+res = dbGetQuery(db, sql)
+head(res)
+```
+Quais são as músicas e identificadores de faixa e álbum produzidas pelo artista que identificador 12?
+```{r}
+sql = paste('SELECT trackid, name, albumid FROM tracks',
+            'WHERE albumid IN',
+            '(SELECT albumid FROM albums WHERE artistid = 12)')
+dbGetQuery(db, sql)
+
+```
+
+
+
+
+
+
+
+
+
+
