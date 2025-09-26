@@ -1,0 +1,163 @@
+---
+title: "Laboratório Especial"
+format: html
+editor: visual
+---
+
+## Laboratório Especial
+
+#ra: 185276 - Fernanda da Silva Cardozo #ra: 236056 - Bianca da Silva dos Santos
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(readr)
+```
+
+```{r}
+#lendo os arquivos 
+flights <- read_csv("~/archive/flights.csv")
+airports <- read_csv("~/archive/airports.csv")
+
+```
+
+```{r}
+analisa_aeronave <- function(tail_number, flights , airports = airports) {
+  cat("Lendo e filtrando dados da aeronave", tail_number , "...\n")
+  filter_callback <- function(x, pos) {
+    x %>% filter(tail_number == tail_number)
+  }
+
+dados_aeronave <- read_csv_chunked(
+    flights,
+    callback = DataFrameCallback$new(filter_callback),
+    chunk_size = 10000,
+    col_types = cols(YEAR = col_integer(), MONTH = col_integer(), DAY = col_integer(),
+                      FLIGHT_NUMBER = col_integer(),
+                      TAIL_NUMBER = col_character(),
+                      ORIGIN_AIRPORT = col_character(),
+                      DESTINATION_AIRPORT = col_character(),
+                      SCHEDULED_DEPARTURE = col_integer(),
+                      DEPARTURE_TIME = col_integer(),
+                      SCHEDULED_ARRIVAL = col_integer(),
+                      ARRIVAL_TIME = col_integer(),
+                      SCHEDULED_TIME = col_integer(),
+                      ELAPSED_TIME = col_integer(),
+                      AIR_TIME = col_integer(),
+                      DISTANCE = col_integer(),
+                      DEPARTURE_DELAY = col_integer(),
+                      ARRIVAL_DELAY = col_integer()
+    )
+  )  
+
+  # verificar se foram encontrados dados para a aeronave
+  if (nrow(dados_aeronave) == 0) {
+    stop(paste("Nenhum dado encontrado para a aeronave", tail_number))
+  }
+  #coluna de data completa e ordenar cronologicamente
+  dados_ordenados <- dados_aeronave %>%
+    mutate(
+      DATA = as.Date(paste(2015, MONTH, DAY, sep = "-")),
+      DEPARTURE_DATETIME = as.POSIXct(
+        paste(DATA, 
+              sprintf("%04d", SCHEDULED_DEPARTURE)), 
+        format = "%Y-%m-%d %H%M")
+    ) %>%
+    arrange(DEPARTURE_DATETIME)
+  #aeroportos com coordenadas
+  aeroportos <- read_csv(
+    arquivo_airports,
+    col_types = cols(
+      IATA_CODE = col_character(),
+      AIRPORT = col_character(),
+      CITY = col_character(),
+      STATE = col_character(),
+      COUNTRY = col_character(),
+      LATITUDE = col_double(),
+      LONGITUDE = col_double()
+    )
+  )
+  # Juntar dados de voos com coordenadas dos aeroportos
+  dados_mapa <- dados_ordenados %>%
+    left_join(aeroportos %>% 
+                select(IATA_CODE, LATITUDE, LONGITUDE), 
+              by = c("ORIGIN_AIRPORT" = "IATA_CODE")) %>%
+    rename(ORIGIN_LAT = LATITUDE, ORIGIN_LON = LONGITUDE) %>%
+    left_join(aeroportos %>% 
+                select(IATA_CODE, LATITUDE, LONGITUDE), 
+              by = c("DESTINATION_AIRPORT" = "IATA_CODE")) %>%
+    rename(DEST_LAT = LATITUDE, DEST_LON = LONGITUDE) %>%
+    mutate(
+      # Calcular velocidade média (milhas por hora)
+      VELOCIDADE_MEDIA = ifelse(AIR_TIME > 0, DISTANCE / (AIR_TIME / 60), NA),
+      # Criar sequência numérica para ordenação no mapa
+      SEQUENCIA = row_number()
+    )
+  
+  
+  cat("Criando mapa...\n")
+  
+  # mapa
+  mapa <- leaflet() %>%
+    addTiles() %>%
+    addProviderTiles(providers$CartoDB.Positron)
+  
+  # marcadores para todos os aeroportos únicos visitados
+  aeroportos_visitados <- unique(c(dados_mapa$ORIGIN_AIRPORT, 
+                                  dados_mapa$DESTINATION_AIRPORT))
+  
+  coordenadas_aeroportos <- aeroportos %>%
+    filter(IATA_CODE %in% aeroportos_visitados)
+  
+  mapa <- mapa %>%
+    addCircleMarkers(
+      data = coordenadas_aeroportos,
+      lng = ~LONGITUDE, 
+      lat = ~LATITUDE,
+      radius = 5,
+      color = "blue",
+      fillOpacity = 0.8,
+      popup = ~paste(AIRPORT, "<br>", CITY, ",", STATE)
+    )
+  
+  # linhas de trajeto com espessura proporcional à velocidade
+  for (i in 1:nrow(dados_mapa)) {
+    mapa <- mapa %>%
+      addPolylines(
+        lng = c(dados_mapa$ORIGIN_LON[i], dados_mapa$DEST_LON[i]),
+        lat = c(dados_mapa$ORIGIN_LAT[i], dados_mapa$DEST_LAT[i]),
+        weight = dados_mapa$VELOCIDADE_MEDIA[i] / 100,  # Espessura proporcional à velocidade
+        color = "red",
+        opacity = 0.7,
+        popup = paste(
+          "Voo: ", dados_mapa$FLIGHT_NUMBER[i], "<br>",
+          "De: ", dados_mapa$ORIGIN_AIRPORT[i], "<br>",
+          "Para: ", dados_mapa$DESTINATION_AIRPORT[i], "<br>",
+          "Data: ", dados_mapa$DATA[i], "<br>",
+          "Velocidade média: ", round(dados_mapa$VELOCIDADE_MEDIA[i], 1), " mph<br>",
+          "Distância: ", dados_mapa$DISTANCE[i], " milhas"
+        )
+      )
+  }
+  
+  # legenda para velocidade
+  mapa <- mapa %>%
+    addLegend(
+      position = "bottomright",
+      colors = "red",
+      labels = "Espessura da linha proporcional à velocidade média (mph)",
+      opacity = 0.7
+    )
+  
+  #resultados
+  cat("Análise concluída para a aeronave", tail_number, "\n")
+  
+  #lista com tabela e mapa
+  return(list(
+    tabela = dados_ordenados,  # Tabela tidy ordenada
+    mapa = mapa  # Mapa leaflet
+  ))
+}
+```
