@@ -1,0 +1,117 @@
+---
+title: "desafio8"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+
+```{r}
+# Instalação dos pacotes se necessário
+# install.packages("RSQLite")
+# install.packages("DBI")
+
+# Carregando os pacotes
+library(DBI)
+library(RSQLite)
+```
+
+```{r}
+db_file <- "uwmadison/database.sqlite3"
+conn <- dbConnect(RSQLite::SQLite(), db_file)
+```
+
+```{r}
+# Query para encontrar os nomes e a contagem de professores de Estatística
+query_professores <- "
+SELECT 
+  COUNT(DISTINCT i.name) AS total_professores 
+FROM instructors i 
+JOIN teachings t ON i.id = t.instructor_id 
+JOIN sections s ON t.section_uuid = s.uuid 
+JOIN course_offerings co ON s.course_offering_uuid = co.uuid 
+JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid 
+JOIN subjects sub ON sm.subject_code = sub.code 
+WHERE sub.abbreviation = 'STAT'; "
+
+# Query para listar os nomes dos professores
+
+query_nomes_professores <- " 
+SELECT DISTINCT 
+  i.name 
+FROM instructors i 
+JOIN teachings t ON i.id = t.instructor_id 
+JOIN sections s ON t.section_uuid = s.uuid 
+JOIN course_offerings co ON s.course_offering_uuid = co.uuid 
+JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid 
+JOIN subjects sub ON sm.subject_code = sub.code 
+WHERE sub.abbreviation = 'STAT' ORDER BY i.name; "
+
+
+total_professores <- dbGetQuery(conn, query_professores) 
+lista_professores <- dbGetQuery(conn, query_nomes_professores)
+
+print(total_professores)
+print(lista_professores)
+```
+
+```{r}
+query_gpa <- "
+WITH StatOfferingsGPA AS (
+  SELECT
+    gd.course_offering_uuid,
+    /* Cálculo do GPA Ponderado */
+    (CAST(gd.a_count AS REAL) * 4.0 + gd.ab_count * 3.5 + gd.b_count * 3.0 +
+     gd.bc_count * 2.5 + gd.c_count * 2.0 + gd.d_count * 1.0 + gd.f_count * 0.0)
+    /
+    /* Total de alunos com notas válidas para o cálculo */
+    (gd.a_count + gd.ab_count + gd.b_count + gd.bc_count +
+     gd.c_count + gd.d_count + gd.f_count) AS gpa
+  FROM grade_distribution gd
+  JOIN course_offerings co ON gd.course_offering_uuid = co.uuid
+  JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid
+  JOIN subjects s ON sm.subject_code = s.code
+  WHERE
+    s.abbreviation = 'STAT' AND
+    (gd.a_count + gd.ab_count + gd.b_count + gd.bc_count +
+     gd.c_count + gd.d_count + gd.f_count) > 0 /* Evita divisão por zero */
+)
+SELECT
+  'professor' AS tipo,
+  i.name AS nome,
+  AVG(sog.gpa) AS gpa_medio,
+  COUNT(sog.gpa) AS num_turmas
+FROM StatOfferingsGPA sog
+JOIN sections sec ON sog.course_offering_uuid = sec.course_offering_uuid
+JOIN teachings t ON sec.uuid = t.section_uuid
+JOIN instructors i ON t.instructor_id = i.id
+GROUP BY nome
+
+UNION ALL
+
+SELECT
+  'disciplina' AS tipo,
+  c.name AS nome,
+  AVG(sog.gpa) AS gpa_medio,
+  COUNT(sog.gpa) AS num_turmas
+FROM StatOfferingsGPA sog
+JOIN course_offerings co ON sog.course_offering_uuid = co.uuid
+JOIN courses c ON co.course_uuid = c.uuid
+GROUP BY nome;
+"
+
+gpa_results <- dbGetQuery(conn, query_gpa)
+
+gpa_professores <- subset(gpa_results, tipo == 'professor')
+gpa_disciplinas <- subset(gpa_results, tipo == 'disciplina')
+
+```
+
+```{r}
+disc_facil <- tail(disciplinas_ordenadas, 1)
+print(disc_facil[, c("nome", "gpa_medio", "num_turmas")])
+```
+
+```{r}
+dbDisconnect(conn)
+```
+
