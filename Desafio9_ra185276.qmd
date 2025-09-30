@@ -1,0 +1,81 @@
+---
+title: "Desafio 9"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+
+```{r}
+library(RSQLite)
+library(readr)
+library(dplyr)
+```
+
+data e hora de compilação
+
+```{r}
+print(Sys.time())
+```
+
+```{r}
+db_file <- "voos.sqlite3" #nome do arquivo
+conn <- dbConnect(SQLite(), db_file)
+```
+
+```{r}
+dbWriteTable(conn, "airlines", read_csv("airlines.csv"), overwrite = TRUE)
+dbWriteTable(conn, "airports", read_csv("airports.csv"), overwrite = TRUE)
+```
+
+```{r}
+aeroportos_interesse <- c("BWI", "MIA", "SEA", "SFO", "JFK")
+
+lerDados <- function(chunk, pos) {
+  message("Leitura atingiu a linha: ", pos) #mensagem de progresso
+  chunk_filtrado <- chunk %>%
+    filter(ORIGIN_AIRPORT %in% aeroportos_interesse | DESTINATION_AIRPORT %in% aeroportos_interesse)
+  dbWriteTable(conn, "flights", chunk_filtrado, append = TRUE)
+}
+```
+
+```{r}
+callback <- SideEffectChunkCallback$new(lerDados)
+
+read_csv_chunked(
+  "flights.csv",
+  callback = callback,
+  chunk_size = 100000,
+  col_types = cols_only(
+    YEAR = "i", MONTH = "i", DAY = "i",
+    AIRLINE = "c", FLIGHT_NUMBER = "i",
+    ORIGIN_AIRPORT = "c", DESTINATION_AIRPORT = "c",
+    ARRIVAL_DELAY = "d"
+  )
+)
+```
+
+```{r}
+query <- "
+  SELECT
+    a.AIRPORT AS nome_aeroporto,
+    l.AIRLINE AS nome_companhia,
+    AVG(f.ARRIVAL_DELAY) AS atraso_medio_chegada
+  FROM
+    flights f
+  JOIN
+    airports a ON f.DESTINATION_AIRPORT = a.IATA_CODE
+  JOIN
+    airlines l ON f.AIRLINE = l.IATA_CODE
+  GROUP BY
+    nome_aeroporto, nome_companhia
+  ORDER BY
+    atraso_medio_chegada DESC
+"
+
+resultado_final <- dbGetQuery(conn, query)
+print(head(resultado_final))
+```
+
+```{r}
+dbDisconnect(conn)
+```
