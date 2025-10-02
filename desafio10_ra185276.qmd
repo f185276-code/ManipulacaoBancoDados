@@ -1,0 +1,143 @@
+---
+title: "Desafio 10"
+author: "Fernanda Cardozo 185276"
+format: html
+editor: visual
+---
+```{r}
+#install.packages("reticulate")  se ainda não tiver
+library(reticulate)
+
+# instala o polars e fastexcel no Python usado pelo R
+#py_install("polars")
+#py_install("fastexcel")
+
+
+reticulate::repl_python()
+
+print(Sys.time())
+```
+
+#Introdução ao Polars
+```{python}
+import polars as pl
+
+# ----------------------------------------
+# Leitura de Arquivos Tabulares
+# ----------------------------------------
+# CSV
+aeroportos = pl.read_csv("//smb/ra185276/Documentos/archive/airports.csv",columns=["IATA_CODE", "CITY", "STATE"])
+aeroportos.head(2)
+
+# Excel
+wdi = pl.read_excel("//smb/ra185276/Documentos/archive/WDIEXCEL.xlsx",columns=["Short Name", "Region"])
+wdi.head(2)
+
+# ----------------------------------------
+# Criando DataFrame simples
+# ----------------------------------------
+df = pl.DataFrame({"grupo": ["A", "A", "B", "B", "C"], "valor1": [10, 15, 10, None, 25], "valor2": [5, None, 20, 30, None]})
+df
+
+# Operações simples
+df["valor1"]
+df["valor1"].mean()
+
+df["valor1"].drop_nulls()
+df["valor1"].drop_nulls().mean()
+
+# Operações por colunas
+df.select([pl.col("valor1").mean().alias("media_v1"), pl.col("valor2").mean()])
+
+# Agrupamento com agregações
+df.group_by("grupo").agg([
+    pl.col("valor1").mean().alias("media_valor1"),
+    pl.col("valor2").min().alias("min_valor2")
+]).sort("grupo")
+
+# ----------------------------------------
+# Exemplo com flights.csv
+# ----------------------------------------
+voos = pl.read_csv("//smb/ra185276/Documentos/archive/flights.csv", columns=["AIRLINE", "ARRIVAL_DELAY", "DESTINATION_AIRPORT"], dtypes={"AIRLINE": pl.Utf8, "ARRIVAL_DELAY": pl.Int32, "DESTINATION_AIRPORT": pl.Utf8})
+voos.shape
+
+voos.head(3)
+
+# Consulta: percentual de atrasos
+resultado = (voos.drop_nulls(["AIRLINE", "DESTINATION_AIRPORT"]).filter(pl.col("AIRLINE").is_in(["AA", "DL"]) & pl.col("DESTINATION_AIRPORT").is_in(["SEA", "MIA", "BWI"])).group_by(["AIRLINE", "DESTINATION_AIRPORT"]).agg([(pl.col("ARRIVAL_DELAY") > 30).mean().alias("atraso_medio")]))
+
+resultado.sort("atraso_medio")
+
+
+# ----------------------------------------
+# Dados Relacionais com Polars
+# ----------------------------------------
+
+
+# ================================
+# Criando DataFrames
+# ================================
+
+# Clientes
+clientes = pl.DataFrame({"cliente_id": [1, 2, 3, 4],"nome": ["Ana", "Bruno", "Clara", "Daniel"]})
+print(clientes)
+
+# Pedidos
+pedidos = pl.DataFrame({"pedido_id": [101, 102, 103, 104, 105], "cliente_id": [1, 2, 3, 1, 5], "valor": [100.50, 250.75, 75.00, 130.00, 79.00]})
+print(pedidos)
+
+# ================================
+# JOINs
+# ================================
+
+# INNER JOIN
+res_ij = clientes.join(pedidos, on="cliente_id", how="inner")
+print(res_ij)
+
+# LEFT JOIN
+res_lj = clientes.join(pedidos, on="cliente_id", how="left")
+print(res_lj)
+
+# RIGHT JOIN
+res_rj = clientes.join(pedidos, on="cliente_id", how="right")
+print(res_rj)
+
+# OUTER JOIN
+res_oj = clientes.join(pedidos, on="cliente_id", how="outer")
+print(res_oj)
+
+# CROSS JOIN (produto cartesiano)
+res_cj = clientes.join(pedidos, how="cross")
+print(res_cj)
+
+# ================================
+# Operações em tabelas combinadas
+# ================================
+
+# P1: Valor médio das compras por cliente
+res_p1 = (res_ij.group_by(["nome", "cliente_id"]).agg(pl.col("valor").mean()))
+print(res_p1)
+
+# P2: Nomes e quantidade de compras >= 100 por cliente
+res_p2 = (res_oj.with_columns((pl.col("valor") >= 100).alias("compra_maior_100")).group_by("nome").agg(pl.col("compra_maior_100").sum().alias("qtd_compras")))
+print(res_p2)
+
+# ================================
+# JOIN com múltiplas colunas
+# ================================
+
+# Vendas
+vendas = pl.DataFrame({"id_venda": [1, 2, 3],"id_cl": [1, 2, 1],"id_prod": [101, 102, 103],"qtde": [2, 1, 1]})
+print(vendas)
+
+# Detalhes dos pedidos
+detalhes_pedidos = pl.DataFrame({"id_ped": [201, 202, 203],"cl_id": [1, 2, 1],"id_prod": [101, 102, 104],"valor": [50.00, 75.00, 100.00]})
+print(detalhes_pedidos)
+
+# JOIN em múltiplas colunas
+final = vendas.join(detalhes_pedidos,left_on=["id_cl", "id_prod"],right_on=["cl_id", "id_prod"],how="inner")
+print(final)
+```
+
+
+
