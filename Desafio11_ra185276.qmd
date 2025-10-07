@@ -1,0 +1,133 @@
+---
+title: "Desafio11"
+author: "Fernanda Cardozo"
+format: html
+editor: visual
+---
+
+```{r}
+print(Sys.time())
+```
+```{r}
+library(arrow)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(janitor)
+```
+Q1
+```{r}
+nomes_colunas <- c(
+  "age", "workclass", "fnlwgt", "education", "education-num",
+  "marital-status", "occupation", "relationship", "race", "sex",
+  "capital-gain", "capital-loss", "hours-per-week", "native-country",
+  "income"
+)
+```
+
+```{r}
+tipos_colunas <- schema(
+  age = int32(),
+  workclass = string(),
+  fnlwgt = int32(),
+  education = string(),
+  education_num = int32(),
+  marital_status = string(),
+  occupation = string(),
+  relationship = string(),
+  race = string(),
+  sex = string(),
+  capital_gain = int32(),
+  capital_loss = int32(),
+  hours_per_week = int32(),
+  native_country = string(),
+  income = string()
+)
+```
+
+```{r}
+renda_adulta_raw <- read_csv_arrow(
+  file = "renda_adulta.csv.gz",
+  col_names = nomes_colunas,
+  na = c("?"),
+  schema = tipos_colunas
+)
+renda_adulta <- clean_names(renda_adulta_raw)
+head(renda_adulta)
+```
+Q2
+```{r}
+glimpse(renda_adulta)
+```
+Q3
+```{r}
+dim(renda_adulta)
+```
+Q4
+```{r}
+renda_adulta %>%
+  count(income)
+```
+Q5
+```{r}
+renda_longo <- renda_adulta %>%
+  pivot_longer(
+    cols = c(capital_gain, capital_loss),
+    names_to = "tipo",
+    values_to = "valor"
+  ) %>%
+  mutate(tipo = sub("capital_", "", tipo))
+head(renda_longo)
+```
+Q6
+```{r}
+renda_adulta %>%
+  group_by(income) %>%
+  summarize(media_horas_semanais = mean(hours_per_week, na.rm = TRUE))
+
+```
+Q7
+```{r}
+renda_adulta %>%
+  count(occupation, sort = TRUE)
+
+```
+Q8
+```{r}
+dados_grafico <- renda_adulta %>%
+  group_by(income) %>%
+  summarize(media_horas = mean(hours_per_week, na.rm = TRUE))
+
+ggplot(dados_grafico, aes(x = income, y = media_horas, fill = income)) +
+  geom_col(show.legend = FALSE) +
+  labs(
+    title = "Média de Horas Trabalhadas Semanalmente por Nível Salarial",
+    x = "Nível Salarial",
+    y = "Média de Horas Trabalhadas"
+  ) +
+  theme_minimal()
+```
+Q9
+```{r}
+analise_genero <- renda_adulta %>%
+  filter(!is.na(sex)) %>% # Remove na de gênero
+  count(sex, income) %>%
+  group_by(sex) %>%
+  mutate(proporcao = n / sum(n))
+
+print(analise_genero)
+```
+```{r}
+ggplot(analise_genero, aes(x = sex, y = n, fill = income)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Proporção Salarial por Gênero",
+    x = "Gênero Biológico",
+    y = "Proporção de Indivíduos",
+    fill = "Nível Salarial"
+  ) +
+  theme_minimal()
+```
+O gráfico e a tabela de proporções mostram que um percentual visivelmente maior de homens ("Male") está na faixa salarial '>50K' em comparação com as mulheres ("Female").
+
